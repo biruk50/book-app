@@ -1,3 +1,5 @@
+@import "@fortawesome/fontawesome-free/css/all.min.css";
+
 @import "tailwindcss";
 
 :root {
@@ -19,8 +21,102 @@
   }
 }
 
+html, body {
+  height: 100%;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+main {
+  flex: 1;
+}
+
+header {
+  display: grid;
+  padding: 1rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+header h1 {
+  margin: 5px;
+  font-size: 2.2rem;
+  font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+}
+
+header input {
+  padding: 8px 12px;
+  font-size: 1rem;
+  border-radius: 28px;
+  height: 77%;
+  width: 60%;
+  border: 1px solid #ccc;  /* visible border */
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+header input:focus {
+  outline: none;
+  border-color: #666;
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+}
+
+footer {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  padding: 1rem;
+  text-align: center;
+
+  margin-top: auto;
+}
+
+a {
+  color: blue;
+  text-decoration: none;
+}
+
+aside {
+  display: flex;
+  width: 12%;
+  height: 100vh;
+  color: black;
+  position: fixed;
+  top: 0;
+  left: 0;
+  padding: 1rem;
+  align-items: space-between;
+}
+
+nav ul {
+  margin-top: 120px;
+  list-style-type: none;
+}
+
+nav ul li {
+  display: flex;
+  align-items: space-between;
+  padding: 15px 0;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+nav ul li:hover {
+  background-color: #b5afaf;
+  color: black;
+}
+
+.AllBooks {
+  display: flex;
+  margin-left: 12%;
+  margin-top: 15px;
+  background-color: rgba(53, 53, 53, 0.046);
+  flex-direction: column;
+  padding-left: 35px;
+  padding-right: 15px;
 }
