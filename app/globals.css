@@ -120,3 +120,15 @@ nav ul li:hover {
   padding-left: 35px;
   padding-right: 15px;
 }
+
+/* hide global header/footer when a page requests full-screen reading */
+body.hide-global-layout header,
+body.hide-global-layout footer {
+  display: none !important;
+}
+
+/* optional: allow reader pages to use full width when header/footer hidden */
+body.hide-global-layout main {
+  width: 100%;
+  margin-left: 12%; /* keep same sidebar offset if you still have a fixed sidebar */
+}
