@@ -1,8 +1,20 @@
-import { books } from "@/constants/mockData"
+"use client"
+import { useState, useEffect } from "react"
 import React from "react"
 import BookCard from "./BookCard"
+import axios from "axios"
 
 export default function AllBooks() {
+  const [books, setBooks] = useState([])
+
+  useEffect(() => {
+    const fetchBooks = async () => {
+      const response = await axios.get("http://localhost/websites/index.php")
+      setBooks(response.data)
+    }
+    fetchBooks()
+  }, [])
+
   return (
     <div className="AllBooks">
       <h1 style={{ fontSize: "2rem"}}>All Books</h1>
