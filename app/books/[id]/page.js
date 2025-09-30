@@ -1,35 +1,95 @@
 "use client";
 
-import { useParams, useRouter} from "next/navigation";
-import React, { useState, useEffect} from "react";
+import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect, useRef } from "react";
 import { ReactReader } from "react-reader";
-
 
 export default function BookPage() {
   const { id } = useParams();
 
- const[book,setBook]= useState(null);
- const [location, setLocation] = useState(null);
- const router = useRouter();
+  const [book, setBook] = useState(null);
+  const [location, setLocation] = useState(null);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(true);
+  const router = useRouter();
 
+  // ref for audio element
+  const audioRef = useRef(null);
 
   // hide global header/footer while this page is mounted
   useEffect(() => {
-    fetchBookById(id);
+    // fetch and show/hide layout; depend on id so new id reloads
+    let mounted = true;
+    fetchBookById(id, mounted).then(() => {});
     hideGlobalLayout(true);
-    return () => hideGlobalLayout(false);
+    return () => {
+      mounted = false;
+      hideGlobalLayout(false);
+      // ensure audio is paused on unmount
+      try {
+        audioRef.current?.pause();
+      } catch (e) {}
+    };
+  }, [id]);
 
-  }, []);
+  // when book loads, start looping music (attempt autoplay)
+  useEffect(() => {
+    if (!book) return;
+    const musicSrc ="/rain.mp3";
+    if (audioRef.current && audioRef.current.src !== musicSrc) {
+      audioRef.current.src = musicSrc;
+      audioRef.current.loop = true;
+    }
+    if (isMusicPlaying && audioRef.current) {
+      // autoplay may be blocked; handle promise
+      const p = audioRef.current.play();
+      if (p && typeof p.then === "function") {
+        p.catch(() => {
+          // autoplay blocked; leave audio paused until user toggles
+          setIsMusicPlaying(false);
+        });
+      }
+    } else {
+      try {
+        audioRef.current?.pause();
+      } catch (e) {}
+    }
+  }, [book, isMusicPlaying]);
 
-  async function fetchBookById(bookId) {
-    const response = await fetch(`http://localhost/websites/getBookById.php?id=${bookId}`);
-    const data = await response.json();
-    setBook(data);
+  async function fetchBookById(bookId, mounted = true) {
+    if (!bookId) return;
+
+    const storageKey = `book_${bookId}`;
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && mounted) {
+          setBook(parsed);
+          console.log("local storage baby");
+          return;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const response = await fetch(
+        `http://localhost/websites/getBookById.php?id=${bookId}`
+      );
+      if (!response.ok) throw new Error("Network response not ok");
+      const data = await response.json();
+      if (mounted) setBook(data);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(data));
+      } catch (e) {}
+    } catch (err) {
+      console.error("Failed to fetch book:", err);
+    }
   }
 
   function hideGlobalLayout(hide) {
     if (hide) {
-      document.body.classList.add("hide-global-layout"); 
+      document.body.classList.add("hide-global-layout");
     } else {
       document.body.classList.remove("hide-global-layout");
     }
@@ -42,7 +102,6 @@ export default function BookPage() {
       </div>
     );
   }
-
 
   const epubUrl =
     book.file_format && String(book.file_format).toLowerCase() === "epub"
@@ -61,7 +120,36 @@ export default function BookPage() {
         </button>
 
         <h1 style={titleStyle}>{book.title}</h1>
+
+        {/* Music toggle control */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => {
+              const next = !isMusicPlaying;
+              setIsMusicPlaying(next);
+              try {
+                if (next) audioRef.current?.play();
+                else audioRef.current?.pause();
+              } catch (e) {}
+            }}
+            aria-pressed={isMusicPlaying}
+            style={{
+              padding: "0.4rem 0.6rem",
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+            title={isMusicPlaying ? "Pause music" : "Play music"}
+          >
+            <i
+              className={`fa ${isMusicPlaying ? "fa-pause" : "fa-play"}`}
+              aria-hidden="true"
+            ></i>
+          </button>
+        </div>
       </div>
+
+      {/* hidden/simple audio element; source set when book loads. Loops by attribute and controlled via ref. */}
+      <audio ref={audioRef} loop style={{ display: "none" }} />
 
       {epubUrl ? (
         <ReactReader
