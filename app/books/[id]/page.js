@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, useRef } from "react";
 import { ReactReader } from "react-reader";
+import { fetchBookById, feature_extract } from "../../Server/actions";
 
 export default function BookPage() {
   const { id } = useParams();
@@ -17,9 +18,13 @@ export default function BookPage() {
 
   // hide global header/footer while this page is mounted
   useEffect(() => {
-    // fetch and show/hide layout; depend on id so new id reloads
     let mounted = true;
-    fetchBookById(id, mounted).then(() => {});
+
+    (async () => {
+      const data = await fetchBookById(id);
+      if (mounted && data) setBook(data);
+    })();
+
     hideGlobalLayout(true);
     return () => {
       mounted = false;
@@ -54,38 +59,6 @@ export default function BookPage() {
       } catch (e) {}
     }
   }, [book, isMusicPlaying]);
-
-  async function fetchBookById(bookId, mounted = true) {
-    if (!bookId) return;
-
-    const storageKey = `book_${bookId}`;
-
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && mounted) {
-          setBook(parsed);
-          console.log("local storage baby");
-          return;
-        }
-      }
-    } catch (e) {}
-
-    try {
-      const response = await fetch(
-        `http://localhost/websites/getBookById.php?id=${bookId}`
-      );
-      if (!response.ok) throw new Error("Network response not ok");
-      const data = await response.json();
-      if (mounted) setBook(data);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(data));
-      } catch (e) {}
-    } catch (err) {
-      console.error("Failed to fetch book:", err);
-    }
-  }
 
   function hideGlobalLayout(hide) {
     if (hide) {
@@ -185,3 +158,4 @@ const titleStyle = {
   textAlign: "center",
   flex: 1,
 };
+     
