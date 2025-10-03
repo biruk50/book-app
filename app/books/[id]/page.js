@@ -34,7 +34,7 @@ export default function BookPage() {
   // when book loads, start looping music (attempt autoplay)
   useEffect(() => {
     if (!book) return;
-    const musicSrc ="/rain.mp3";
+    const musicSrc = "/rain.mp3";
     if (audioRef.current && audioRef.current.src !== musicSrc) {
       audioRef.current.src = musicSrc;
       audioRef.current.loop = true;
