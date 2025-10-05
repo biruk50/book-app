@@ -1,22 +1,32 @@
-export async function feature_extract(data) {
-	const response = await fetch(
-		"https://router.huggingface.co/hf-inference/models/Qwen/Qwen3-Embedding-0.6B/pipeline/feature-extraction",
-		{
-			headers: {
-				Authorization: `Bearer ${process.env.HF_TOKEN}`,
-				"Content-Type": "application/json",
-			},
-			method: "POST",
-			body: JSON.stringify(data),
-		}
-	);
-	const result = await response.json();
-	return result;
-}
+export async function feature_extract(text) {
+  const prompt = `
+Summarize the following text focusing ONLY on:
+- Weather or environmental conditions
+- Surrounding environment (e.g., beach, city, forest, etc.)
+- Whether it feels crowded or empty
+- The general emotional or atmospheric mood.
 
-feature_extract({ inputs: "Today is a sunny day and I will get some ice cream." }).then((response) => {
-    console.log(JSON.stringify(response));
-});
+Text: ${text} `;
+
+  const response = await fetch(
+    "https://router.huggingface.co/hf-inference/models/Falconsai/text_summarization",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.HF_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ inputs: prompt }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  return result.generated_text || result[0]?.generated_text || JSON.stringify(result);
+}
 
 
 

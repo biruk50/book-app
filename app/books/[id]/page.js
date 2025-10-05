@@ -7,16 +7,31 @@ import { fetchBookById, feature_extract } from "../../Server/actions";
 
 export default function BookPage() {
   const { id } = useParams();
-
-  const [book, setBook] = useState(null);
-  const [location, setLocation] = useState(null);
-  const [isMusicPlaying, setIsMusicPlaying] = useState(true);
   const router = useRouter();
-
-  // ref for audio element
   const audioRef = useRef(null);
 
-  // hide global header/footer while this page is mounted
+  const [book, setBook] = useState(null);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(true);
+  const [musicSrc, setMusicSrc] = useState("/rain.mp3");
+  const [rendition, setRendition] = useState(null);
+
+  const storageKey = `persist-location-${id}`;
+  const [location, setLocation] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? JSON.parse(raw) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(location));
+    } catch {}
+  }, [location, storageKey]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -29,57 +44,79 @@ export default function BookPage() {
     return () => {
       mounted = false;
       hideGlobalLayout(false);
-      // ensure audio is paused on unmount
       try {
         audioRef.current?.pause();
-      } catch (e) {}
+      } catch {}
     };
   }, [id]);
 
-  // when book loads, start looping music (attempt autoplay)
   useEffect(() => {
     if (!book) return;
-    const musicSrc = "/rain.mp3";
     if (audioRef.current && audioRef.current.src !== musicSrc) {
       audioRef.current.src = musicSrc;
       audioRef.current.loop = true;
     }
     if (isMusicPlaying && audioRef.current) {
-      // autoplay may be blocked; handle promise
       const p = audioRef.current.play();
       if (p && typeof p.then === "function") {
-        p.catch(() => {
-          // autoplay blocked; leave audio paused until user toggles
-          setIsMusicPlaying(false);
-        });
+        p.catch(() => setIsMusicPlaying(false));
       }
     } else {
       try {
         audioRef.current?.pause();
-      } catch (e) {}
+      } catch {}
     }
-  }, [book, isMusicPlaying]);
+  }, [book, musicSrc, isMusicPlaying]);
 
   function hideGlobalLayout(hide) {
-    if (hide) {
-      document.body.classList.add("hide-global-layout");
-    } else {
-      document.body.classList.remove("hide-global-layout");
-    }
+    if (hide) document.body.classList.add("hide-global-layout");
+    else document.body.classList.remove("hide-global-layout");
   }
 
-  if (!book) {
-    return (
-      <div style={{ marginLeft: "12%", padding: "2rem", color: "#900" }}>
-        Book not found
-      </div>
-    );
+  async function handleChapterChange() {
+    if (!rendition) return;
+    const loc = rendition.currentLocation();
+    const chapterId = loc?.start?.href || loc?.start?.cfi || "unknown";
+
+    const cacheKey = `book-chapter-cache-${id}-${chapterId}`;
+    if (localStorage.getItem(cacheKey)) return; // Local cache hit
+
+    const contents = rendition.getContents();
+    let textContent = "";
+    for (const c of contents) {
+      try {
+        textContent += c.document.body.innerText + "\n";
+      } catch {}
+    }
+    if (!textContent.trim()) return;
+
+    try {
+      
+      const res = await fetch(`http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${encodeURIComponent(chapterId)}`);
+      const exists = await res.json();
+      if (exists?.found) {
+        localStorage.setItem(cacheKey, "true"); // Cache it
+        return;
+      }
+
+      // Run feature extraction and store backend
+      const result = await feature_extract(id, textContent);
+      if (result?.music_url) setMusicSrc(result.music_url);
+
+      await fetch(`http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${encodeURIComponent(chapterId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ text: textContent }),
+      });
+
+      localStorage.setItem(cacheKey, "true");
+    } catch (e) {
+      console.error("Chapter processing failed:", e);
+    }
   }
 
   const epubUrl =
-    book.file_format && String(book.file_format).toLowerCase() === "epub"
-      ? book.path
-      : "";
+    book?.file_format?.toLowerCase() === "epub" ? book.path : "";
 
   return (
     <div style={{ height: "100vh" }}>
@@ -92,9 +129,8 @@ export default function BookPage() {
           <i className="fa fa-arrow-left" style={{ fontSize: "1rem" }}></i>
         </button>
 
-        <h1 style={titleStyle}>{book.title}</h1>
+        <h1 style={titleStyle}>{book?.title}</h1>
 
-        {/* Music toggle control */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => {
@@ -103,7 +139,7 @@ export default function BookPage() {
               try {
                 if (next) audioRef.current?.play();
                 else audioRef.current?.pause();
-              } catch (e) {}
+              } catch {}
             }}
             aria-pressed={isMusicPlaying}
             style={{
@@ -121,14 +157,20 @@ export default function BookPage() {
         </div>
       </div>
 
-      {/* hidden/simple audio element; source set when book loads. Loops by attribute and controlled via ref. */}
       <audio ref={audioRef} loop style={{ display: "none" }} />
-
+      
       {epubUrl ? (
         <ReactReader
           url={epubUrl}
           location={location}
-          locationChanged={(epubcfi) => setLocation(epubcfi)}
+          locationChanged={(loc) => {
+            setLocation(loc);
+            handleChapterChange();
+          }}
+          getRendition={(rend) => {
+            setRendition(rend);
+            rend.on("relocated", handleChapterChange);
+          }}
         />
       ) : (
         <div style={{ padding: "2rem", marginLeft: "12%" }}>
@@ -150,7 +192,6 @@ const buttonStyle = {
   borderRadius: "7px",
   cursor: "pointer",
 };
-
 const titleStyle = {
   fontSize: "1.2rem",
   marginBottom: "0.5rem",
@@ -158,4 +199,3 @@ const titleStyle = {
   textAlign: "center",
   flex: 1,
 };
-     
