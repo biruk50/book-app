@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ReactReader } from "react-reader";
 import { fetchBookById, feature_extract } from "../../Server/actions";
 
@@ -12,8 +12,10 @@ export default function BookPage() {
 
   const [book, setBook] = useState(null);
   const [isMusicPlaying, setIsMusicPlaying] = useState(true);
-  const [musicSrc, setMusicSrc] = useState("/rain.mp3");
+  const [musicSrc, setMusicSrc] = useState("/ambient.mp3");
   const [rendition, setRendition] = useState(null);
+
+  const [chapterId, setChapterId] = useState(null);
 
   const storageKey = `persist-location-${id}`;
   const [location, setLocation] = useState(() => {
@@ -68,6 +70,93 @@ export default function BookPage() {
     }
   }, [book, musicSrc, isMusicPlaying]);
 
+  // helper to extract numeric chapter number from href (e.g. returns 4 from "...-h-4.htm.xhtml")
+  const extractChapterNumberFromHref = useCallback((href) => {
+    if (!href || typeof href !== "string") return null;
+    const m = href.match(/h-(\d+)/i);
+    return m ? Number(m[1]) : null;
+  }, []);
+
+  // update relocation handler to set numeric chapterId
+  const handleRelocated = useCallback(() => {
+    try {
+      if (!rendition || typeof rendition.currentLocation !== "function") return;
+      const loc = rendition.currentLocation();
+      const href = loc?.start?.href || loc?.start?.cfi || "";
+      const num = extractChapterNumberFromHref(String(href));
+      if (num !== null && num !== chapterId) {
+        setChapterId(num);
+      }
+    } catch (e) {
+    }
+  }, [rendition, chapterId, extractChapterNumberFromHref]);
+
+  // whenever chapterId changes, update musicSrc (deterministic mapping into tracks)
+  useEffect(() => {
+  if (chapterId === null) return;
+
+  const tracks = ["/rain.mp3", "/club_crowd.mp3", "/suspense.mp3", "/ambient.mp3"];
+  const idx = Math.abs(Number(chapterId)) % tracks.length;
+  const chosen = tracks[idx];
+
+  if (chosen === musicSrc) return; // no change
+
+  // Smooth transition
+  const fadeDuration = 1000; // ms
+  const audio = audioRef.current;
+  if (!audio) return;
+
+  // If currently playing, fade out smoothly
+  const fadeOut = async () => {
+    if (!audio.src || audio.paused) return;
+    const step = 50;
+    const decrement = audio.volume / (fadeDuration / step);
+    return new Promise((resolve) => {
+      const fade = setInterval(() => {
+        if (audio.volume > decrement) {
+          audio.volume -= decrement;
+        } else {
+          audio.volume = 0;
+          clearInterval(fade);
+          resolve();
+        }
+      }, step);
+    });
+  };
+
+  const fadeIn = async () => {
+    const step = 50;
+    const increment = 1 / (fadeDuration / step);
+    audio.volume = 0;
+    const fade = setInterval(() => {
+      if (audio.volume < 1 - increment) {
+        audio.volume += increment;
+      } else {
+        audio.volume = 1;
+        clearInterval(fade);
+      }
+    }, step);
+  };
+
+  (async () => {
+    try {
+      await fadeOut(); // fade out current track
+      audio.pause();
+      audio.src = chosen;
+      audio.load();
+      if (isMusicPlaying) {
+        await audio.play().catch(() => {});
+        fadeIn(); // fade in new track
+      }
+      setMusicSrc(chosen);
+    } catch (e) {
+      console.error("Transition error:", e);
+      setMusicSrc(chosen); // fallback
+    }
+  })();
+}, [chapterId, isMusicPlaying]);
+
+
   function hideGlobalLayout(hide) {
     if (hide) document.body.classList.add("hide-global-layout");
     else document.body.classList.remove("hide-global-layout");
@@ -77,9 +166,9 @@ export default function BookPage() {
     if (!rendition) return;
     const loc = rendition.currentLocation();
     const chapterId = loc?.start?.href || loc?.start?.cfi || "unknown";
-
+    console.log(chapterId);
     const cacheKey = `book-chapter-cache-${id}-${chapterId}`;
-    if (localStorage.getItem(cacheKey)) return; // Local cache hit
+    if (localStorage.getItem(cacheKey)) return; 
 
     const contents = rendition.getContents();
     let textContent = "";
@@ -91,23 +180,29 @@ export default function BookPage() {
     if (!textContent.trim()) return;
 
     try {
-      
-      const res = await fetch(`http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${encodeURIComponent(chapterId)}`);
+      const res = await fetch(
+        `http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${chapterId}`
+      );
       const exists = await res.json();
       if (exists?.found) {
+        console.log("fetched from backend");
         localStorage.setItem(cacheKey, "true"); // Cache it
         return;
       }
 
       // Run feature extraction and store backend
       const result = await feature_extract(id, textContent);
+      console.log("feature_extract", result);
       if (result?.music_url) setMusicSrc(result.music_url);
 
-      await fetch(`http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${encodeURIComponent(chapterId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ text: textContent }),
-      });
+      await fetch(
+        `http://localhost/websites/book_chapter.php?book_id=${id}&chapter_id=${chapterId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ text: textContent }),
+        }
+      );
 
       localStorage.setItem(cacheKey, "true");
     } catch (e) {
@@ -115,8 +210,7 @@ export default function BookPage() {
     }
   }
 
-  const epubUrl =
-    book?.file_format?.toLowerCase() === "epub" ? book.path : "";
+  const epubUrl = book?.file_format?.toLowerCase() === "epub" ? book.path : "";
 
   return (
     <div style={{ height: "100vh" }}>
@@ -158,7 +252,7 @@ export default function BookPage() {
       </div>
 
       <audio ref={audioRef} loop style={{ display: "none" }} />
-      
+
       {epubUrl ? (
         <ReactReader
           url={epubUrl}
@@ -166,6 +260,9 @@ export default function BookPage() {
           locationChanged={(loc) => {
             setLocation(loc);
             handleChapterChange();
+            try {
+              handleRelocated();
+            } catch (e) {}
           }}
           getRendition={(rend) => {
             setRendition(rend);
