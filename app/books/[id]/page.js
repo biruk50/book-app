@@ -77,20 +77,6 @@ export default function BookPage() {
     return m ? Number(m[1]) : null;
   }, []);
 
-  // update relocation handler to set numeric chapterId
-  const handleRelocated = useCallback(() => {
-    try {
-      if (!rendition || typeof rendition.currentLocation !== "function") return;
-      const loc = rendition.currentLocation();
-      const href = loc?.start?.href || loc?.start?.cfi || "";
-      const num = extractChapterNumberFromHref(String(href));
-      if (num !== null && num !== chapterId) {
-        setChapterId(num);
-      }
-    } catch (e) {
-    }
-  }, [rendition, chapterId, extractChapterNumberFromHref]);
-
   // whenever chapterId changes, update musicSrc (deterministic mapping into tracks)
   useEffect(() => {
   if (chapterId === null) return;
@@ -141,7 +127,6 @@ export default function BookPage() {
   (async () => {
     try {
       await fadeOut(); // fade out current track
-      audio.pause();
       audio.src = chosen;
       audio.load();
       if (isMusicPlaying) {
@@ -151,7 +136,7 @@ export default function BookPage() {
       setMusicSrc(chosen);
     } catch (e) {
       console.error("Transition error:", e);
-      setMusicSrc(chosen); // fallback
+      setMusicSrc(chosen);
     }
   })();
 }, [chapterId, isMusicPlaying]);
@@ -164,9 +149,14 @@ export default function BookPage() {
 
   async function handleChapterChange() {
     if (!rendition) return;
+    
     const loc = rendition.currentLocation();
-    const chapterId = loc?.start?.href || loc?.start?.cfi || "unknown";
-    console.log(chapterId);
+    const href = loc?.start?.href || loc?.start?.cfi || "";
+    const num = extractChapterNumberFromHref(String(href));
+    if (num !== null && num !== chapterId) {
+      setChapterId(num);
+    } else return;
+
     const cacheKey = `book-chapter-cache-${id}-${chapterId}`;
     if (localStorage.getItem(cacheKey)) return; 
 
@@ -188,9 +178,11 @@ export default function BookPage() {
         console.log("fetched from backend");
         localStorage.setItem(cacheKey, "true"); // Cache it
         return;
-      }
+    }
+  }catch (e) {}
 
       // Run feature extraction and store backend
+      try {
       const result = await feature_extract(id, textContent);
       console.log("feature_extract", result);
       if (result?.music_url) setMusicSrc(result.music_url);
@@ -260,9 +252,6 @@ export default function BookPage() {
           locationChanged={(loc) => {
             setLocation(loc);
             handleChapterChange();
-            try {
-              handleRelocated();
-            } catch (e) {}
           }}
           getRendition={(rend) => {
             setRendition(rend);

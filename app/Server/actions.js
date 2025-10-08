@@ -25,6 +25,7 @@ Text: ${text} `;
   }
 
   const result = await response.json();
+  console.log("successful api call",result);
   return result.generated_text || result[0]?.generated_text || JSON.stringify(result);
 }
 
